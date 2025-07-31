@@ -27,7 +27,12 @@ st.set_page_config(
     page_title="Análise Tributária RTI",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': None,
+        'Report a bug': None,
+        'About': None
+    }
 )
 
 # CSS customizado
@@ -608,17 +613,15 @@ Gerado em: {pd.Timestamp.now().strftime('%d/%m/%Y às %H:%M')}
                 for nota in self.notas_processadas:
                     comparativo = self.calculator.calcular_comparativo(nota)
                     self.comparativos.append(comparativo)
-                st.experimental_rerun()
+                st.rerun()
         
-        st.sidebar.markdown("### ℹ️ Sobre")
+        st.sidebar.markdown("### ℹ️ Sobre a Aplicação")
         st.sidebar.info("""
-        Esta aplicação analisa o impacto da Reforma Tributária (RTI) 
-        comparando a tributação atual com a proposta da PLP 39/2015.
+        📊 **Análise Tributária RTI**
         
-        **Desenvolvido para:**
-        - Empresas e contadores
-        - Análise de impacto fiscal
-        - Planejamento tributário
+        Compare a tributação atual com a Reforma Tributária (PLP 39/2015).
+        
+        📖 Acesse o **Manual de Uso** para instruções detalhadas.
         """)
     
     def run(self):
