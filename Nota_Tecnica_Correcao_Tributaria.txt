@@ -1,0 +1,58 @@
+
+NOTA TÉCNICA DE CORREÇÃO – DIVERGÊNCIA NO RELATÓRIO TRIBUTÁRIO
+
+📌 Problema Identificado
+O sistema atual aplica alíquotas genéricas de PIS, COFINS e IPI com base em uma tabela externa (ncm_rates.json), sem considerar os valores efetivos constantes no XML da NF-e, como por exemplo:
+<vPIS>0.28</vPIS>
+<vCOFINS>1.26</vCOFINS>
+<vIPI>0.00</vIPI>
+
+Essa abordagem:
+- Ignora o CST (Código de Situação Tributária) real;
+- Desconsidera isenções, alíquotas zero ou monofásicas;
+- Pode gerar uma simulação inflada, que não reflete a realidade fiscal da nota analisada.
+
+🧨 Exemplo Prático da Divergência
+No XML fornecido:
+- Valor dos produtos: R$ 42,36
+- Tributos reais: PIS = R$ 0,28, COFINS = R$ 1,26, IPI = R$ 0,00
+
+Mas o sistema simulou:
+- Valor dos produtos: R$ 65.064,96
+- CBS+IBS: R$ 650,65
+
+➡️ Isso representa uma diferença de mil vezes no valor total analisado.
+
+✅ Proposta de Correção Técnica
+
+1. Ajuste no Código Python – Substituir os valores simulados pelos reais do XML:
+```python
+df_vpis = df_xml[df_xml['path'].str.endswith('/PIS/PISAliq/vPIS')].assign(valor_pis=lambda d: d['text'].astype(float))
+df_vcofins = df_xml[df_xml['path'].str.endswith('/COFINS/COFINSAliq/vCOFINS')].assign(valor_cofins=lambda d: d['text'].astype(float))
+df_vipi = df_xml[df_xml['path'].str.endswith('/IPI/vIPI')].assign(valor_ipi=lambda d: d['text'].astype(float))
+
+df_vpis['item'] = df_vpis['path'].apply(extrai_item)
+df_vcofins['item'] = df_vcofins['path'].apply(extrai_item)
+df_vipi['item'] = df_vipi['path'].apply(extrai_item)
+
+df_all = df_all.merge(df_vpis[['item','valor_pis']], on='item', how='left')
+df_all = df_all.merge(df_vcofins[['item','valor_cofins']], on='item', how='left')
+df_all = df_all.merge(df_vipi[['item','valor_ipi']], on='item', how='left')
+
+df_all['valor_pis'] = df_all['valor_pis'].fillna(0)
+df_all['valor_cofins'] = df_all['valor_cofins'].fillna(0)
+df_all['valor_ipi'] = df_all['valor_ipi'].fillna(0)
+```
+
+2. Alternativa com lógica condicional por CST:
+```python
+def alíquota_real(cst, valor, taxa):
+    if cst in ['06', '07', '08', '09']:
+        return 0.0
+    return valor * taxa
+```
+
+🟢 Resultado Esperado Após a Correção
+- O relatório passa a refletir os valores reais pagos de PIS, COFINS e IPI, evitando distorções;
+- O comparativo entre situação atual e pós-reforma será mais fiel e confiável;
+- Possíveis benefícios fiscais ou aumento de carga serão calculados com base na realidade documental.
