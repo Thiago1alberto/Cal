@@ -19,8 +19,8 @@ def test_sistema_completo():
     
     try:
         # Importações necessárias
-        from src.parser.xml_parser import ler_xml_universal
-        print("✅ Parser XML importado")
+        from src.parser.nf_parser import NFParser
+        print("✅ Parser NFe importado")
         
         import pandas as pd
         print("✅ Pandas importado")
@@ -86,48 +86,37 @@ def test_sistema_completo():
         print("-" * 50)
         
         try:
-            # Parse do XML
-            df_xml = ler_xml_universal(str(xml_path))
+            # Parse do XML usando o parser principal
+            parser = NFParser()
             
-            if df_xml.empty:
+            # Carrega o XML
+            with open(xml_path, 'r', encoding='utf-8') as f:
+                xml_content = f.read()
+            
+            # Valida a estrutura
+            if not parser.validate_nf_structure(xml_content):
+                print(f"⚠️  XML não é uma NFe válida")
+                continue
+            
+            # Parse completo
+            nota_fiscal = parser.parse_nota_fiscal(xml_content)
+            
+            if not nota_fiscal.itens:
                 print(f"⚠️  XML vazio ou sem dados válidos")
                 continue
             
-            # Extração de dados específicos (mesmo processo do app.py)
+            # Converter para DataFrame para compatibilidade com o resto do código
+            produtos_data = []
+            for i, item in enumerate(nota_fiscal.itens, 1):
+                produtos_data.append({
+                    'item': i,
+                    'valor_produto': float(item.valor_total),
+                    'CST': getattr(item.get_tributo('ICMS'), 'cst', '000') if item.get_tributo('ICMS') else '000',
+                    'NCM': item.ncm or '',
+                    'produto': item.descricao
+                })
             
-            # 1. Valores dos produtos
-            df_val = df_xml[df_xml['path'].str.endswith('/prod/vProd')].copy()
-            if not df_val.empty:
-                df_val['valor_produto'] = pd.to_numeric(df_val['text'], errors='coerce').fillna(0)
-                df_val['item'] = df_val['path'].str.extract(r'det\[(\d+)\]').astype(int)
-                df_val = df_val[['item', 'valor_produto']]
-            
-            # 2. CST dos produtos  
-            df_cst = df_xml[df_xml['tag'] == 'CST'].copy()
-            if not df_cst.empty:
-                df_cst['item'] = df_cst['path'].str.extract(r'det\[(\d+)\]').astype(int)
-                df_cst = df_cst[['item', 'text']].rename(columns={'text': 'CST'})
-            
-            # 3. NCM dos produtos
-            df_ncm = df_xml[df_xml['path'].str.endswith('/prod/NCM')].copy()
-            if not df_ncm.empty:
-                df_ncm['item'] = df_ncm['path'].str.extract(r'det\[(\d+)\]').astype(int)
-                df_ncm = df_ncm[['item', 'text']].rename(columns={'text': 'NCM'})
-            
-            # 4. Nomes dos produtos
-            df_prod = df_xml[df_xml['path'].str.endswith('/prod/xProd')].copy()
-            if not df_prod.empty:
-                df_prod['item'] = df_prod['path'].str.extract(r'det\[(\d+)\]').astype(int)
-                df_prod = df_prod[['item', 'text']].rename(columns={'text': 'produto'})
-            
-            # 5. Merge dos dados
-            df_consolidado = df_val
-            if not df_cst.empty:
-                df_consolidado = df_consolidado.merge(df_cst, on='item', how='left')
-            if not df_ncm.empty:
-                df_consolidado = df_consolidado.merge(df_ncm, on='item', how='left')
-            if not df_prod.empty:
-                df_consolidado = df_consolidado.merge(df_prod, on='item', how='left')
+            df_consolidado = pd.DataFrame(produtos_data)
             
             if df_consolidado.empty:
                 print(f"⚠️  Não foi possível consolidar dados do XML")

@@ -82,7 +82,7 @@ class NFParser:
         try:
             root = ET.fromstring(xml_content)
             
-            # Verifica se é uma estrutura de NF-e
+            # Verifica se é uma estrutura de NF-e (sem namespace)
             nfe_elements = [
                 './/infNFe',
                 './/NFe',
@@ -92,6 +92,23 @@ class NFParser:
             for element_path in nfe_elements:
                 if root.find(element_path) is not None:
                     return True
+            
+            # Verifica com namespace padrão da NFe
+            nfe_ns = {'nfe': 'http://www.portalfiscal.inf.br/nfe'}
+            nfe_elements_ns = [
+                './/nfe:infNFe',
+                './/nfe:NFe',
+                './/nfe:nfeProc'
+            ]
+            
+            for element_path in nfe_elements_ns:
+                if root.find(element_path, nfe_ns) is not None:
+                    return True
+            
+            # Verifica se a tag raiz contém elementos NFe (fallback)
+            root_tag = root.tag.split('}')[-1] if '}' in root.tag else root.tag
+            if root_tag in ['nfeProc', 'NFe', 'infNFe']:
+                return True
             
             return False
             
