@@ -224,49 +224,129 @@ class TributaryApp:
         self.notas_processadas = []
         self.comparativos = []
         
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+        # Container para status e progresso
+        status_container = st.container()
+        
+        with status_container:
+            st.markdown("### 🔄 Processando Arquivos...")
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            debug_expander = st.expander("🔍 Log de Processamento", expanded=True)
+        
+        total_files = len(uploaded_files)
+        processed_count = 0
         
         for i, uploaded_file in enumerate(uploaded_files):
             try:
-                status_text.text(f"Processando {uploaded_file.name}...")
+                # Atualiza status
+                current_status = f"📄 Processando arquivo {i+1}/{total_files}: {uploaded_file.name}"
+                status_text.text(current_status)
+                
+                with debug_expander:
+                    st.write(f"▶️ Iniciando processamento de **{uploaded_file.name}**")
                 
                 # Lê conteúdo do arquivo
                 xml_content = uploaded_file.read().decode('utf-8')
                 
+                with debug_expander:
+                    st.write(f"   ✅ Arquivo lido: {len(xml_content)} caracteres")
+                
                 # Valida XML
+                with debug_expander:
+                    st.write(f"   🔍 Validando estrutura NFe...")
+                
                 is_valid, error_msg = validate_xml_nfe(xml_content)
                 if not is_valid:
+                    with debug_expander:
+                        st.write(f"   ❌ **Validação falhou**: {error_msg}")
                     st.warning(f"⚠️ Arquivo {uploaded_file.name}: {error_msg}")
+                    progress_bar.progress((i + 1) / total_files)
                     continue
+                
+                with debug_expander:
+                    st.write(f"   ✅ Validação passou")
+                    st.write(f"   🔄 Fazendo parse da nota fiscal...")
                 
                 # Faz parse da nota fiscal
                 nota_fiscal = self.parser.parse_nota_fiscal(xml_content)
+                
+                with debug_expander:
+                    st.write(f"   ✅ Parse concluído: {len(nota_fiscal.itens)} itens encontrados")
+                    st.write(f"   💰 Valor total: R$ {nota_fiscal.valor_total_produtos:.2f}")
+                
                 self.notas_processadas.append(nota_fiscal)
+                processed_count += 1
                 
                 # Calcula comparativo se calculadora estiver disponível
                 if self.calculator:
+                    with debug_expander:
+                        st.write(f"   🧮 Calculando comparativo tributário...")
+                    
                     comparativo = self.calculator.calcular_comparativo(nota_fiscal)
                     self.comparativos.append(comparativo)
+                    
+                    with debug_expander:
+                        st.write(f"   ✅ Comparativo calculado")
+                else:
+                    with debug_expander:
+                        st.write(f"   ⚠️ Calculadora não disponível - pulando comparativo")
                 
-                progress_bar.progress((i + 1) / len(uploaded_files))
+                progress_bar.progress((i + 1) / total_files)
+                
+                with debug_expander:
+                    st.write(f"   🎉 **{uploaded_file.name}** processado com sucesso!")
+                    st.markdown("---")
                 
             except NFParserError as e:
-                st.error(f"❌ Erro ao processar {uploaded_file.name}: {str(e)}")
+                error_msg = f"❌ Erro de parser ao processar {uploaded_file.name}: {str(e)}"
+                with debug_expander:
+                    st.write(f"   ❌ **Erro de Parser**: {str(e)}")
+                st.error(error_msg)
+                progress_bar.progress((i + 1) / total_files)
                 continue
             except Exception as e:
-                st.error(f"❌ Erro inesperado ao processar {uploaded_file.name}: {str(e)}")
+                error_msg = f"❌ Erro inesperado ao processar {uploaded_file.name}: {str(e)}"
+                with debug_expander:
+                    st.write(f"   ❌ **Erro Inesperado**: {str(e)}")
+                    # Adiciona traceback para debug
+                    import traceback
+                    st.code(traceback.format_exc())
+                st.error(error_msg)
+                progress_bar.progress((i + 1) / total_files)
                 continue
         
-        status_text.text("Processamento concluído!")
-        progress_bar.empty()
-        status_text.empty()
+        # Finaliza processamento
+        status_text.text("✅ Processamento concluído!")
+        progress_bar.progress(1.0)
         
+        # Resultado final
         if self.notas_processadas:
-            st.success(f"✅ {len(self.notas_processadas)} nota(s) fiscal(is) processada(s) com sucesso!")
+            success_msg = f"🎉 {processed_count} de {total_files} nota(s) fiscal(is) processada(s) com sucesso!"
+            st.success(success_msg)
+            
+            with debug_expander:
+                st.write(f"**RESUMO FINAL:**")
+                st.write(f"- Total de arquivos: {total_files}")
+                st.write(f"- Processados com sucesso: {processed_count}")
+                st.write(f"- Valor total processado: R$ {sum(n.valor_total_produtos for n in self.notas_processadas):.2f}")
+            
+            # Limpa a interface após sucesso
+            import time
+            time.sleep(2)
+            progress_bar.empty()
+            status_text.empty()
+            
             return True
         else:
             st.error("❌ Nenhuma nota fiscal foi processada com sucesso")
+            
+            with debug_expander:
+                st.write("**RESULTADO**: Nenhum arquivo foi processado com sucesso")
+                st.write("**SUGESTÕES**:")
+                st.write("- Verifique se os arquivos são XMLs de NFe válidos")
+                st.write("- Verifique se a tabela de CST foi carregada")
+                st.write("- Consulte os logs acima para detalhes dos erros")
+            
             return False
     
     def render_summary_metrics(self):

@@ -119,7 +119,7 @@ def format_cpf(cpf: str) -> str:
 
 def validate_xml_nfe(xml_content: str) -> tuple[bool, Optional[str]]:
     """
-    Valida se o conteúdo XML é uma NF-e válida
+    Valida se o conteúdo XML é uma NF-e válida usando o parser principal
     
     Args:
         xml_content: Conteúdo do XML
@@ -134,20 +134,19 @@ def validate_xml_nfe(xml_content: str) -> tuple[bool, Optional[str]]:
     if not xml_content.strip().startswith('<?xml') and not xml_content.strip().startswith('<'):
         return False, "Arquivo não parece ser um XML válido"
     
-    # Verifica se contém elementos de NF-e
-    nfe_patterns = [
-        r'<infNFe',
-        r'<NFe',
-        r'<nfeProc',
-        r'portalfiscal\.inf\.br/nfe'
-    ]
-    
-    has_nfe_pattern = any(re.search(pattern, xml_content, re.IGNORECASE) for pattern in nfe_patterns)
-    
-    if not has_nfe_pattern:
-        return False, "Arquivo não parece ser uma NF-e válida"
-    
-    return True, None
+    # Usa o parser principal para validação mais robusta
+    try:
+        from src.parser.nf_parser import NFParser
+        parser = NFParser()
+        is_valid = parser.validate_nf_structure(xml_content)
+        
+        if not is_valid:
+            return False, "Arquivo não é uma NF-e ou NFC-e válida (estrutura não reconhecida)"
+        
+        return True, None
+        
+    except Exception as e:
+        return False, f"Erro na validação: {str(e)}"
 
 
 def safe_decimal_conversion(value: any, default: Decimal = Decimal('0')) -> Decimal:
