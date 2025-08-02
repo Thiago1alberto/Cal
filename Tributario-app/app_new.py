@@ -105,6 +105,19 @@ class TributaryApp:
             st.session_state.processed_files = []
         if 'cst_loaded' not in st.session_state:
             st.session_state.cst_loaded = False
+        if 'df_cst' not in st.session_state:
+            st.session_state.df_cst = None
+            
+        # Tenta recuperar calculadora se dados estão na sessão
+        if st.session_state.cst_loaded and st.session_state.df_cst is not None and self.calculator is None:
+            try:
+                config = ConfigTributacao()
+                self.calculator = CalculadoraTributaria(config)
+                self.calculator.carregar_tabela_cst(st.session_state.df_cst)
+                st.sidebar.success("🔄 Calculadora recuperada da sessão!")
+            except Exception as e:
+                st.sidebar.error(f"❌ Erro ao recuperar calculadora: {e}")
+                st.session_state.cst_loaded = False
     
     def render_header(self):
         """Renderiza o cabeçalho da aplicação"""
@@ -205,10 +218,13 @@ class TributaryApp:
             self.calculator = CalculadoraTributaria(config)
             self.calculator.carregar_tabela_cst(df_cst)
             
+            # Salva na sessão para recuperar se necessário
+            st.session_state.df_cst = df_cst
             st.session_state.cst_loaded = True
             
             # Mostra preview dos dados
             st.success(f"✅ Tabela CST carregada com sucesso! ({len(df_cst)} registros)")
+            st.info(f"🧮 Calculadora inicializada e pronta para uso!")
             
             with st.expander("👀 Preview dos dados CST"):
                 st.dataframe(df_cst.head(10))
@@ -287,9 +303,14 @@ class TributaryApp:
                     
                     with debug_expander:
                         st.write(f"   ✅ Comparativo calculado")
+                        st.write(f"   📊 Tributos atuais: R$ {sum(comparativo.tributacao_atual.values()):.2f}")
+                        st.write(f"   🔄 Tributos reforma: R$ {sum(comparativo.tributacao_nova.values()):.2f}")
                 else:
                     with debug_expander:
-                        st.write(f"   ⚠️ Calculadora não disponível - pulando comparativo")
+                        st.write(f"   ❌ **ERRO: Calculadora não disponível!**")
+                        st.write(f"   💡 Verifique se a tabela CST foi carregada corretamente")
+                        st.write(f"   🔍 Status calculadora: {self.calculator}")
+                        st.write(f"   🔍 Status CST: {st.session_state.get('cst_loaded', False)}")
                 
                 progress_bar.progress((i + 1) / total_files)
                 
@@ -660,6 +681,26 @@ Gerado em: {pd.Timestamp.now().strftime('%d/%m/%Y às %H:%M')}
         """Renderiza configurações na sidebar"""
         st.sidebar.markdown("### ⚙️ Configurações RTI")
         
+        # Status da calculadora - DEBUG
+        st.sidebar.markdown("### 🔍 Status do Sistema")
+        
+        # Status da calculadora
+        if self.calculator:
+            st.sidebar.success("✅ Calculadora: Ativa")
+            if hasattr(self.calculator, 'cst_data') and self.calculator.cst_data is not None:
+                st.sidebar.info(f"📋 CST: {len(self.calculator.cst_data)} registros")
+        else:
+            st.sidebar.error("❌ Calculadora: Não inicializada")
+        
+        # Status da sessão
+        st.sidebar.write(f"CST Sessão: {'✅' if st.session_state.cst_loaded else '❌'}")
+        if st.session_state.df_cst is not None:
+            st.sidebar.write(f"Dados CST: ✅ {len(st.session_state.df_cst)} registros")
+        else:
+            st.sidebar.write("Dados CST: ❌ Não carregados")
+            
+        st.sidebar.markdown("---")
+        
         # Configurações de alíquotas
         cbs_rate = st.sidebar.slider(
             "CBS (%)",
@@ -739,6 +780,19 @@ Gerado em: {pd.Timestamp.now().strftime('%d/%m/%Y às %H:%M')}
         # Processamento
         if xml_files and st.session_state.cst_loaded:
             if st.button("🚀 Processar Análise Tributária", type="primary"):
+                # Verifica se calculadora ainda está disponível
+                if not self.calculator:
+                    st.warning("⚠️ Calculadora não encontrada. Tentando reinicializar...")
+                    # Tenta recarregar a calculadora
+                    if hasattr(st.session_state, 'df_cst') and st.session_state.df_cst is not None:
+                        config = ConfigTributacao()
+                        self.calculator = CalculadoraTributaria(config)
+                        self.calculator.carregar_tabela_cst(st.session_state.df_cst)
+                        st.success("✅ Calculadora reinicializada!")
+                    else:
+                        st.error("❌ Não foi possível reinicializar a calculadora. Recarregue a tabela CST.")
+                        st.stop()
+                
                 if self.process_xml_files(xml_files):
                     st.session_state.processed_files = xml_files
         
