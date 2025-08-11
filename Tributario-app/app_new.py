@@ -234,13 +234,7 @@ class TributaryApp:
                 # Lê conteúdo do arquivo
                 xml_content = uploaded_file.read().decode('utf-8')
                 
-                # Valida XML
-                is_valid, error_msg = validate_xml_nfe(xml_content)
-                if not is_valid:
-                    st.warning(f"⚠️ Arquivo {uploaded_file.name}: {error_msg}")
-                    continue
-                
-                # Faz parse da nota fiscal
+                # Faz parse da nota fiscal (a validação já é feita internamente)
                 nota_fiscal = self.parser.parse_nota_fiscal(xml_content)
                 self.notas_processadas.append(nota_fiscal)
                 

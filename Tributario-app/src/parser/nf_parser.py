@@ -82,20 +82,38 @@ class NFParser:
         try:
             root = ET.fromstring(xml_content)
             
-            # Verifica se é uma estrutura de NF-e
+            # Debug: imprime informações do XML
+            self._debug_print(f"Root tag: {root.tag}")
+            self._debug_print(f"Root attribs: {root.attrib}")
+            
+            # Lista de elementos que indicam uma NF-e válida
             nfe_elements = [
-                './/infNFe',
-                './/NFe',
-                './/nfeProc'
+                './/infNFe',  # Sem namespace
+                './/{http://www.portalfiscal.inf.br/nfe}infNFe',  # Com namespace completo
+                './/NFe',  # Elemento NFe
+                './/{http://www.portalfiscal.inf.br/nfe}NFe',  # NFe com namespace
+                './/nfeProc',  # Processo da NF-e
+                './/{http://www.portalfiscal.inf.br/nfe}nfeProc'  # nfeProc com namespace
             ]
             
             for element_path in nfe_elements:
-                if root.find(element_path) is not None:
+                element = root.find(element_path)
+                if element is not None:
+                    self._debug_print(f"Elemento encontrado: {element_path} -> {element.tag}")
                     return True
             
+            # Se não encontrou pelos métodos acima, tenta uma validação mais flexível
+            # Procura por qualquer elemento que contenha 'infNFe' ou 'NFe'
+            for elem in root.iter():
+                if 'infNFe' in elem.tag or 'NFe' in elem.tag:
+                    self._debug_print(f"Elemento flexível encontrado: {elem.tag}")
+                    return True
+            
+            self._debug_print("Nenhum elemento de NF-e encontrado")
             return False
             
         except ET.ParseError as e:
+            self._debug_print(f"Erro de parsing XML: {e}")
             raise NFParserError(f"XML inválido: {e}")
     
     def parse_xml_to_dict(self, xml_content: str) -> Dict[str, Any]:
