@@ -246,7 +246,7 @@ class TributaryApp:
                 
                 # Calcula comparativo se calculadora estiver disponível
                 if self.calculator:
-                    comparativo = self.calculator.calcular_comparativo(nota_fiscal)
+                    comparativo = self.calculator.realizar_comparacao(nota_fiscal)
                     self.comparativos.append(comparativo)
                 
                 progress_bar.progress((i + 1) / len(uploaded_files))
@@ -296,7 +296,7 @@ class TributaryApp:
             st.metric(
                 "🏛️ Tributação Atual",
                 format_currency(total_atual),
-                help="Total de PIS + COFINS + IPI + ICMS"
+                help="Total de PIS + COFINS + IPI + ICMS + ISS (se aplicável)"
             )
         
         with col3:
@@ -332,37 +332,107 @@ class TributaryApp:
         if not self.comparativos:
             return
         
-        st.markdown("### 🔍 Comparação Detalhada por Tributo")
+        st.markdown("### 🔍 Resumo Destrinchado dos Tributos")
         
-        # Consolida tributos
+        # Consolida tributos atuais
         tributos_atuais = {
             'PIS': sum(c.tributacao_atual.get('PIS', Decimal('0')) for c in self.comparativos),
             'COFINS': sum(c.tributacao_atual.get('COFINS', Decimal('0')) for c in self.comparativos),
             'IPI': sum(c.tributacao_atual.get('IPI', Decimal('0')) for c in self.comparativos),
-            'ICMS': sum(c.tributacao_atual.get('ICMS', Decimal('0')) for c in self.comparativos)
+            'ICMS': sum(c.tributacao_atual.get('ICMS', Decimal('0')) for c in self.comparativos),
+            'ISS': sum(c.tributacao_atual.get('ISS', Decimal('0')) for c in self.comparativos)
         }
         
+        # Consolida tributos RTI
         tributos_rti = {
             'CBS': sum(c.tributacao_nova.get('CBS', Decimal('0')) for c in self.comparativos),
             'IBS': sum(c.tributacao_nova.get('IBS', Decimal('0')) for c in self.comparativos)
         }
         
+        # Calcula totais
+        total_atual = sum(tributos_atuais.values())
+        total_rti = sum(tributos_rti.values())
+        
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("🏛️ Tributação Atual")
+            st.subheader("🏛️ Tributação Atual Detalhada")
+            
+            # Tabela detalhada da tributação atual
+            dados_atuais = []
             for tributo, valor in tributos_atuais.items():
-                if valor > 0:
-                    st.markdown(f"**{tributo}**: {format_currency(valor)}")
+                percentual = (valor / total_atual * 100) if total_atual > 0 else Decimal('0')
+                descricao = self._get_descricao_tributo(tributo)
+                dados_atuais.append({
+                    'Tributo': tributo,
+                    'Descrição': descricao,
+                    'Valor (R$)': format_currency(valor),
+                    'Participação (%)': f"{percentual:.2f}%"
+                })
+            
+            if dados_atuais:
+                df_atual = pd.DataFrame(dados_atuais)
+                st.dataframe(df_atual, use_container_width=True, hide_index=True)
+                st.markdown(f"**Total Tributação Atual: {format_currency(total_atual)}**")
         
         with col2:
-            st.subheader("🆕 Tributação RTI")
+            st.subheader("🆕 Tributação Nova (RTI) Detalhada")
+            
+            # Tabela detalhada da tributação RTI
+            dados_rti = []
             for tributo, valor in tributos_rti.items():
-                if valor > 0:
-                    st.markdown(f"**{tributo}**: {format_currency(valor)}")
+                percentual = (valor / total_rti * 100) if total_rti > 0 else Decimal('0')
+                descricao = self._get_descricao_tributo(tributo)
+                dados_rti.append({
+                    'Tributo': tributo,
+                    'Descrição': descricao,
+                    'Valor (R$)': format_currency(valor),
+                    'Participação (%)': f"{percentual:.2f}%"
+                })
+            
+            if dados_rti:
+                df_rti = pd.DataFrame(dados_rti)
+                st.dataframe(df_rti, use_container_width=True, hide_index=True)
+                st.markdown(f"**Total Tributação RTI: {format_currency(total_rti)}**")
+        
+        # Comparativo direto
+        st.markdown("---")
+        st.subheader("📊 Comparativo Direto")
+        
+        economia = total_atual - total_rti
+        economia_percentual = (economia / total_atual * 100) if total_atual > 0 else Decimal('0')
+        
+        col_comp1, col_comp2, col_comp3 = st.columns(3)
+        
+        with col_comp1:
+            st.metric("Tributação Atual", format_currency(total_atual))
+        
+        with col_comp2:
+            st.metric("Tributação RTI", format_currency(total_rti))
+        
+        with col_comp3:
+            delta_color = "normal" if economia >= 0 else "inverse"
+            st.metric(
+                "Impacto", 
+                format_currency(economia),
+                f"{economia_percentual:.2f}%"
+            )
         
         # Gráfico de comparação
         self.render_comparison_chart(tributos_atuais, tributos_rti)
+    
+    def _get_descricao_tributo(self, tipo: str) -> str:
+        """Retorna descrição do tributo"""
+        descricoes = {
+            'PIS': 'Programa de Integração Social',
+            'COFINS': 'Contribuição para o Financiamento da Seguridade Social',
+            'IPI': 'Imposto sobre Produtos Industrializados',
+            'ICMS': 'Imposto sobre Circulação de Mercadorias e Serviços',
+            'ISS': 'Imposto sobre Serviços',
+            'CBS': 'Contribuição sobre Bens e Serviços',
+            'IBS': 'Imposto sobre Bens e Serviços'
+        }
+        return descricoes.get(tipo, tipo)
     
     def render_comparison_chart(self, tributos_atuais: Dict, tributos_rti: Dict):
         """Renderiza gráfico de comparação de tributos"""
@@ -599,10 +669,32 @@ Gerado em: {pd.Timestamp.now().strftime('%d/%m/%Y às %H:%M')}
             help="Alíquota do Imposto sobre Bens e Serviços"
         )
         
+        # Configurações do ISS
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 🏛️ Configurações ISS")
+        
+        incluir_iss = st.sidebar.checkbox(
+            "Incluir ISS no cálculo",
+            value=False,
+            help="Marque se as notas incluem serviços sujeitos ao ISS"
+        )
+        
+        iss_rate = st.sidebar.slider(
+            "ISS (%)",
+            min_value=0.0,
+            max_value=10.0,
+            value=5.0,
+            step=0.1,
+            disabled=not incluir_iss,
+            help="Percentual do ISS sobre a base de cálculo"
+        )
+        
         # Atualiza configuração se mudou
         if self.calculator:
-            self.calculator.config_rti.cbs_aliquota = Decimal(str(cbs_rate / 100))
-            self.calculator.config_rti.ibs_aliquota = Decimal(str(ibs_rate / 100))
+            self.calculator.config_rti.aliquota_cbs = Decimal(str(cbs_rate / 100))
+            self.calculator.config_rti.aliquota_ibs = Decimal(str(ibs_rate / 100))
+            self.calculator.config_rti.incluir_iss = incluir_iss
+            self.calculator.config_rti.iss_percentual = Decimal(str(iss_rate / 100))
         
         st.sidebar.markdown("---")
         st.sidebar.markdown("### 📚 Recursos")
@@ -611,7 +703,7 @@ Gerado em: {pd.Timestamp.now().strftime('%d/%m/%Y às %H:%M')}
             if self.notas_processadas and self.calculator:
                 self.comparativos = []
                 for nota in self.notas_processadas:
-                    comparativo = self.calculator.calcular_comparativo(nota)
+                    comparativo = self.calculator.realizar_comparacao(nota)
                     self.comparativos.append(comparativo)
                 st.rerun()
         

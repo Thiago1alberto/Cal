@@ -67,8 +67,10 @@ class NotaFiscal:
 class ConfigTributacao:
     """Configuração da nova tributação (RTI)"""
     cbs_aliquota: Decimal = Decimal('0.009')  # 0.9%
-    ibs_aliquota: Decimal = Decimal('0.001')  # 0.1%
-    cst_reducoes: Dict[str, Dict[str, Decimal]] = None
+    ibs_aliquota: Decimal = Decimal('0.26')   # 26%
+    incluir_iss: bool = False  # Flag para incluir ISS no cálculo
+    iss_percentual: Decimal = Decimal('0.05')  # 5% sobre o total já somado
+    cst_reducoes: Optional[Dict[str, Dict[str, Decimal]]] = None
     
     def __post_init__(self):
         if self.cst_reducoes is None:
